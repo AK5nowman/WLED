@@ -3,18 +3,36 @@
 /*
  * Used to draw clock overlays over the strip
  */
+#define OL_ANALOGCLOCK 1
+#define OL_CRONIXIE 3
+#ifdef WLED_ENABLE_SEVENSEG
+  #define OL_SEVENSEG 4
+#endif
  
-void initCronixie()
+
+void transitionOut(byte overlay)
 {
-  if (overlayCurrent == 3 && !cronixieInit)
+  switch(overlay)
   {
-    setCronixie();
-    strip.getSegment(0).grouping = 10; //10 LEDs per digit
-    cronixieInit = true;
-  } else if (cronixieInit && overlayCurrent != 3)
+    case OL_CRONIXIE:
+      strip.getSegment(0).grouping = 1;
+      break;
+  }
+}
+
+void transitionIn(byte overlay)
+{
+  switch(overlay)
   {
-    strip.getSegment(0).grouping = 1;
-    cronixieInit = false; 
+    case OL_CRONIXIE:
+      setCronixie();
+      strip.getSegment(0).grouping = 10;
+      break;
+    #ifdef WLED_ENABLE_SEVENSEG
+    case OL_SEVENSEG:
+      overlayRefreshMs = 497;
+      break;
+    #endif
   }
 }
 
@@ -23,12 +41,37 @@ void handleOverlays()
 {
   if (millis() - overlayRefreshedTime > overlayRefreshMs)
   {
-    initCronixie();
-    updateLocalTime();
-    checkTimers();
-    checkCountdown();
-    if (overlayCurrent == 3) _overlayCronixie();//Diamex cronixie clock kit
+    if(overlayCurrent != overlayPrevious)
+    {
+      //Call Transitions if overlay has changed.
+      transitionOut(overlayPrevious);
+      transitionIn(overlayCurrent);
+      overlayPrevious = overlayCurrent;
+    }
+
+    updateLocalTime();//Should this be called from wled::loop or other - Seems like more than just clock overlays depend on time being updated it should be regularly called?
+    checkTimers();    //This doesn't appear to have anything to do with overlays?
+    checkCountdown(); //This doesn't appear to have anything to do with overlays?
+
+    if (overlayCurrent == OL_CRONIXIE) _overlayCronixie();//Diamex cronixie clock kit
+    #ifdef WLED_ENABLE_SEVENSEG
+    if(overlayCurrent == OL_SEVENSEG) _overlaySevenSegmentProcess();
+    #endif
+
+
     overlayRefreshedTime = millis();
+  }
+}
+
+void handleOverlayDraw() {
+  if (!overlayCurrent) return;
+  switch (overlayCurrent)
+  {
+    case OL_ANALOGCLOCK: _overlayAnalogClock(); break;
+    case OL_CRONIXIE: _drawOverlayCronixie(); break;
+    #ifdef WLED_ENABLE_SEVENSEG
+      case OL_SEVENSEG: _overlaySevenSegmentDraw(); break;
+    #endif
   }
 }
 
@@ -117,16 +160,6 @@ void _overlayAnalogCountdown()
     }
   }
   overlayRefreshMs = 998;
-}
-
-
-void handleOverlayDraw() {
-  if (!overlayCurrent) return;
-  switch (overlayCurrent)
-  {
-    case 1: _overlayAnalogClock(); break;
-    case 3: _drawOverlayCronixie(); break;
-  }
 }
 
 
@@ -374,3 +407,182 @@ void setCronixie() {}
 void _overlayCronixie() {}
 void _drawOverlayCronixie() {}
 #endif
+
+
+#ifdef WLED_ENABLE_SEVENSEG
+//This will handle the actual pixel setting based on physical config and message.
+void _overlaySevenSegmentDraw()
+{
+  
+  //Start pixels at ssStartLED, Use ssLEDPerSegment, ssLEDPerPeriod, ssDisplayBuffer
+  int indexLED = 0;
+  for(int indexBuffer = 0; indexBuffer < WLED_SS_BUFFLEN; indexBuffer++)
+  {
+    if(ssDisplayBuffer[indexBuffer] == 0) break;
+    else if(ssDisplayBuffer[indexBuffer] == '.')
+    {
+      //Won't ever turn off LED lights for a period. (or will we?)
+      indexLED += ssLEDPerPeriod; 
+      continue;
+    }
+    else if(ssDisplayBuffer[indexBuffer] == ':')
+    {
+      //Turn off colon if odd second?
+      indexLED += ssLEDPerPeriod * 2;
+    }
+    else if(ssDisplayBuffer[indexBuffer] == ' ')
+    {
+      //Turn off all 7 segments.
+      _overlaySevenSegmentLEDOutput(0, indexLED);
+      indexLED += ssLEDPerSegment * 7;
+    }
+    else
+    {
+      //Turn off correct segments.
+      _overlaySevenSegmentLEDOutput(_overlaySevenSegmentGetCharMask(ssDisplayBuffer[indexBuffer]), indexLED);
+      indexLED += ssLEDPerSegment * 7;
+    }
+    
+  }
+
+}
+void _overlaySevenSegmentLEDOutput(char mask, int indexLED)
+{
+  for(char index = 0; index < 7; index++)
+  {
+    if((mask & (0x40 >> index)) != (0x40 >> index))
+    {
+      for(int numPerSeg = 0; numPerSeg < ssLEDPerSegment;  numPerSeg++)
+      {
+        strip.setPixelColor(indexLED, 0x000000);
+      }
+    }
+    indexLED += ssLEDPerSegment;
+  }
+}
+//This should process what the digits should display with xxDraw is called. 
+void _overlaySevenSegmentProcess()
+{
+  //Do time for now.
+  if(!ssDoDisplayMessage)
+  {
+    //Format the ssDisplayBuffer based on ssDisplayMask
+    for(int index = 0; index < WLED_SS_BUFFLEN; index++)
+    {
+      //Only look for time formatting if there are at least 2 characters left in the buffer.
+      if((index < WLED_SS_BUFFLEN - 1) && (ssDisplayMask[index] == ssDisplayMask[index + 1]))
+      {
+        int timeVar = 0;
+        switch(ssDisplayMask[index])
+        {
+          case 'h':
+            timeVar = hourFormat12(localTime);
+            break;
+          case 'H':
+            timeVar = hour(localTime);
+            break;
+          case 'k':
+            timeVar = hour(localTime) + 1;
+            break;
+          case 'M':
+          case 'm':
+            timeVar = minute(localTime);
+            break;
+          case 'S':
+          case 's':
+            timeVar = second(localTime);
+            break;
+
+        }
+
+        //Only want to leave a blank in the hour formatting. 
+        if((ssDisplayMask[index] == 'h' || ssDisplayMask[index] == 'H' || ssDisplayMask[index] == 'k') && timeVar < 10)
+          ssDisplayBuffer[index] = ' ';
+        else
+          ssDisplayBuffer[index] = 0x30 + (timeVar / 10);
+        ssDisplayBuffer[index + 1] = 0x30 + (timeVar % 10);  
+
+        //Need to increment the index because of the second digit.
+        index++;
+      }
+      else 
+      {
+        ssDisplayBuffer[index] = (ssDisplayMask[index] == ':' ? ':' : ' ');
+      }
+    }
+  }
+  else
+  {
+    /* This will handle displaying a message and the scrolling of the message if its longer than the buffer length */
+    
+  }
+}
+
+char _overlaySevenSegmentGetCharMask(char var)
+{
+  //ssCharacterMask
+  var -= 0x30;
+  if(var > 0x30)
+    var -= 0x20;
+  else if(var > 0x40)
+    var -= 0x10;
+  
+  char mask = ssCharacterMask[var];
+ /*
+  0 - EDCGFAB
+  1 - EDCBAFG
+  2 - GCDEFAB
+  3 - GBAFEDC
+  4 - FABGEDC
+  5 - FABCDEG
+  */
+  switch(ssDisplayConfig)
+  {
+    case 1:
+      mask = _overlaySevenSegmentSwapBits(mask, 0, 3, 1);
+      mask = _overlaySevenSegmentSwapBits(mask, 1, 2, 1);
+      break;
+    case 2:
+      mask = _overlaySevenSegmentSwapBits(mask, 3, 6, 1);
+      mask = _overlaySevenSegmentSwapBits(mask, 4, 5, 1);
+      break;
+    case 3:
+      mask = _overlaySevenSegmentSwapBits(mask, 0, 4, 3);
+      mask = _overlaySevenSegmentSwapBits(mask, 3, 6, 1);
+      mask = _overlaySevenSegmentSwapBits(mask, 4, 5, 1);
+      break;
+    case 4:
+      mask = _overlaySevenSegmentSwapBits(mask, 0, 4, 3);
+      break;
+    case 5:
+      mask = _overlaySevenSegmentSwapBits(mask, 0, 4, 3);
+      mask = _overlaySevenSegmentSwapBits(mask, 0, 3, 1);
+      mask = _overlaySevenSegmentSwapBits(mask, 1, 2, 1);
+      break;
+  }
+  return mask;
+}
+char _overlaySevenSegmentSwapBits(char x, char p1, char p2, char n)
+{
+    /* Move all bits of first set to rightmost side */
+    char set1 = (x >> p1) & ((1U << n) - 1);
+ 
+    /* Move all bits of second set to rightmost side */
+    char set2 = (x >> p2) & ((1U << n) - 1);
+ 
+    /* Xor the two sets */
+    char Xor = (set1 ^ set2);
+ 
+    /* Put the Xor bits back to their original positions */
+    Xor = (Xor << p1) | (Xor << p2);
+ 
+    /* Xor the 'Xor' with the original number so that the 
+    two sets are swapped */
+    char result = x ^ Xor;
+ 
+    return result;
+}
+#endif
+
+
+

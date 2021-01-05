@@ -223,6 +223,15 @@ void handleSettingsSet(AsyncWebServerRequest *request, byte subPage)
     analogClock5MinuteMarks = request->hasArg(F("O5"));
     analogClockSecondsTrail = request->hasArg(F("OS"));
 
+    #ifdef WLED_ENABLE_SEVENSEG
+    strcpy(ssDisplayMask, request->arg(F("ZM")).c_str());
+    ssDisplayConfig = request->arg(F("ZC")).toInt();
+    Serial.printf("set DisplayConfig %d\r\n", request->arg(F("ZC")).toInt());
+    ssStartLED = request->arg(F("Z1")).toInt();
+    ssLEDPerSegment = request->arg(F("ZS")).toInt();
+    ssLEDPerPeriod = request->arg(F("ZP")).toInt();
+    #endif
+
     strcpy(cronixieDisplay,request->arg(F("CX")).c_str());
     cronixieBacklight = request->hasArg(F("CB"));
     countdownMode = request->hasArg(F("CE"));

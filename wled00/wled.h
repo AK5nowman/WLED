@@ -11,7 +11,7 @@
 #define VERSION 2012020
 
 //uncomment this if you have a "my_config.h" file you'd like to use
-//#define WLED_USE_MY_CONFIG
+#define WLED_USE_MY_CONFIG
 
 // ESP8266-01 (blue) got too little storage space to work with WLED. 0.10.2 is the last release supporting this unit.
 
@@ -37,7 +37,9 @@
 #ifndef WLED_DISABLE_WEBSOCKETS
   #define WLED_ENABLE_WEBSOCKETS
 #endif
-
+#ifndef WLED_DISABLE_SEVENSEG
+  #define WLED_ENABLE_SEVENSEG
+#endif
 #define WLED_ENABLE_FS_EDITOR      // enable /edit page for editing FS content. Will also be disabled with OTA lock
 
 // to toggle usb serial debug (un)comment the following line
@@ -313,6 +315,41 @@ WLED_GLOBAL byte macroCountdown _INIT(0);
 WLED_GLOBAL byte macroAlexaOn _INIT(0), macroAlexaOff _INIT(0);
 WLED_GLOBAL byte macroButton _INIT(0), macroLongPress _INIT(0), macroDoublePress _INIT(0);
 
+//Seven Segment CONFIG
+#ifdef WLED_ENABLE_SEVENSEG
+  #define WLED_SS_BUFFLEN 8
+  //
+  //  HH - 0-23. hh - 1-12, kk - 1-24 hours
+  //  MM or mm - 0-59 minutes
+  //  SS or ss = 0-59 seconds
+  //  : for a colon
+  //  All others for alpha numeric, (will be blank when displaying time)
+  WLED_GLOBAL char ssDisplayMask[WLED_SS_BUFFLEN+1] _INIT("HH:MM:SS");  //Physical Display Mask
+  WLED_GLOBAL byte ssLEDPerSegment _INIT(1);            //The number of LEDs in each segment of the 7 seg (total per seg is 7 * ssLedPerSegment)
+  WLED_GLOBAL byte ssLEDPerPeriod _INIT(1);             //A Period will have 1x and a Colon will have 2x
+  WLED_GLOBAL char ssDisplayMessage[50] _INIT("");      //Message that can scroll across
+  WLED_GLOBAL int ssStartLED _INIT(0);               //The pixel that the display starts at. 
+  //
+  // ssDisplayConfig
+  //           -------
+  //         /   A   /          0 - EDCGFAB
+  //        / F     / B         1 - EDCBAFG
+  //       /       /            2 - GCDEFAB
+  //       -------              3 - GBAFEDC
+  //     /   G   /              4 - FABGEDC
+  //    / E     / C             5 - FABCDEG
+  //   /       /
+  //   -------
+  //      D
+  WLED_GLOBAL byte ssDisplayConfig _INIT(0);            //Physical configuration of the Seven segment display
+  WLED_GLOBAL char ssCharacterMask[36] _INIT_N(({0x77,0x11,0x6B,0x3B,0x1D,0x3E,0x7E,0x13,0x7F,0x1F,0x5F,0x7B,0x66,0x79,0x6E,0x4E,0x76,0x5D,0x44,0x71,0x5E,0x64,0x27,0x58,0x77,0x4F,0x1F,0x48,0x3E,0x6C,0x75,0x25,0x7D,0x2A,0x3D,0x6B}));
+  //Runtime Variables
+  WLED_GLOBAL char ssDisplayBuffer[WLED_SS_BUFFLEN+1] _INIT("00:00:00");//Buffer what is displayed
+  WLED_GLOBAL bool ssDoDisplayMessage _INIT(0);                         //If not, display time. 
+
+
+#endif
+
 // Security CONFIG
 WLED_GLOBAL bool otaLock     _INIT(false);  // prevents OTA firmware updates without password. ALWAYS enable if system exposed to any public networks
 WLED_GLOBAL bool wifiLock    _INIT(false);  // prevents access to WiFi settings when OTA lock is enabled
@@ -413,13 +450,13 @@ WLED_GLOBAL bool hueStoreAllowed _INIT(false), hueNewKey _INIT(false);
 
 // overlays
 WLED_GLOBAL byte overlayCurrent _INIT(overlayDefault);
+WLED_GLOBAL byte overlayPrevious _INIT(-1);             //Previous will be used to determine overlay transition. Will only be != Current for 1 cycle
 WLED_GLOBAL byte overlaySpeed _INIT(200);
 WLED_GLOBAL unsigned long overlayRefreshMs _INIT(200);
 WLED_GLOBAL unsigned long overlayRefreshedTime;
 
 // cronixie
 WLED_GLOBAL byte dP[] _INIT_N(({ 0, 0, 0, 0, 0, 0 }));
-WLED_GLOBAL bool cronixieInit _INIT(false);
 
 // countdown
 WLED_GLOBAL unsigned long countdownTime _INIT(1514764800L);

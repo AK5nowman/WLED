@@ -386,6 +386,13 @@ void getSettingsJS(byte subPage, char* dest)
     sappend('c',SET_F("O5"),analogClock5MinuteMarks);
     sappends('s',SET_F("CX"),cronixieDisplay);
     sappend('c',SET_F("CB"),cronixieBacklight);
+    #ifdef WLED_ENABLE_SEVENSEG
+    sappends('s',SET_F("ZM"),ssDisplayMask);
+    sappend('v',SET_F("ZC"),ssDisplayConfig);
+    sappend('v',SET_F("Z1"),ssStartLED);
+    sappend('v',SET_F("ZS"),ssLEDPerSegment);
+    sappend('v',SET_F("ZP"),ssLEDPerPeriod);
+    #endif
     sappend('c',SET_F("CE"),countdownMode);
     sappend('v',SET_F("CY"),countdownYear);
     sappend('v',SET_F("CI"),countdownMonth);

@@ -143,6 +143,14 @@ void handleOverlayDraw();
 void _overlayAnalogCountdown();
 void _overlayAnalogClock();
 
+#ifdef WLED_ENABLE_SEVENSEG
+void _overlaySevenSegmentDraw();
+void _overlaySevenSegmentLEDOutput(char mask, int indexLED);
+void _overlaySevenSegmentProcess();
+char _overlaySevenSegmentGetCharMask(char var);
+char _overlaySevenSegmentSwapBits(char x, char p1, char p2, char n);
+void _overlaySevenSegmentProcess();
+#endif
 byte getSameCodeLength(char code, int index, char const cronixieDisplay[]);
 void setCronixie();
 void _overlayCronixie();    
